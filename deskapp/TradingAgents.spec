@@ -6,12 +6,6 @@ Build (from the repo root):
 
 Output:
     dist/TradingAgents-full.exe      (~200-300 MB, onefile, windowed)
-
-We resolve paths from ``os.getcwd()`` (the workflow's checkout root)
-instead of ``Path(SPECPATH).parent.parent``: on the Windows
-``windows-latest`` GitHub runner the workspace is the repo root itself
-(D:\\a\\<repo>), so computing the repo root from SPECPATH would resolve
-one directory too high. ``os.getcwd()`` is unambiguous in every case.
 """
 import os
 import sys
@@ -19,13 +13,11 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
-# Repo root: where pyinstaller was invoked from.
 ROOT = Path(os.getcwd()).resolve()
 RES = ROOT / "deskapp" / "app_bundle" / "Resources"
 ICON_ICNS = RES / "icon.icns"
 ICON_ICO = RES / "icon.ico"
 
-# Pick the icon appropriate to the host OS.
 if sys.platform == "win32" and ICON_ICO.exists():
     ICON = str(ICON_ICO)
 elif ICON_ICNS.exists():
@@ -33,12 +25,17 @@ elif ICON_ICNS.exists():
 else:
     ICON = None
 
+# -----------------------------------------------------------------------------
 # Hidden imports. PyInstaller's static analysis cannot see through every
-# dynamic import (akshare / langchain load endpoints via importlib). We
-# pull every relevant package and every akshare sub-namespace explicitly
-# so the user-visible "No module named akshare" failure does not happen.
+# dynamic import. The analysis pipeline at runtime loads 80+ third-party
+# top-level packages (see the audit script). Anything missed here will
+# surface at runtime as "ModuleNotFoundError" - the user-visible failure
+# mode this spec was rewritten to avoid.
+# -----------------------------------------------------------------------------
 hidden = [
+    # Internal - PyInstaller's analysis often misses them.
     "tradingagents.dataflows._py_mini_racer_lock",
+    # Big third-party packages that ship C extensions or dynamic imports.
     "akshare",
     "py_mini_racer",
     "curl_cffi",
@@ -56,65 +53,109 @@ hidden = [
     "langchain",
     "langchain_community",
     "langchain_core",
+    "langgraph",
+    "langgraph_sdk",
+    "langsmith",
+    "langchain_text_splitters",
+    "langchain_anthropic",
+    "langchain_openai",
+    "langchain_google_genai",
     "pandas",
     "numpy",
-    "peewee",
+    "peewee",            # akshare uses peewee for some persistence
     "tushare",
+    "pydantic",
+    "pydantic_core",
+    "annotated_types",
+    "typing_inspection",
+    "typing_extensions",
+    "anyio",             # httpx dep
+    "httpx",             # langchain dep
+    "sniffio",
+    "distro",
+    "websockets",        # langgraph dep
+    "tenacity",          # langchain retry dep
+    "pyyaml",            # langchain dep
+    "packaging",         # common
+    "python_dateutil",
+    "dateutil",
+    "pytz",
+    "six",
+    "uuid_utils",        # langchain dep
+    "multitasking",      # yfinance dep
+    "platformdirs",
+    "filetype",          # used by akshare / yfinance
+    "html5lib",          # bs4 / requests_html dep
+    "webencodings",
+    "soupsieve",         # bs4 dep
+    "requests_toolbelt", # yfinance / akshare dep
+    "urllib3",
+    "idna",
+    "charset_normalizer",
+    "certifi",
+    "zstandard",         # optional, used by some
+    "orjson",            # optional
+    "ormsgpack",         # optional
+    "rich",              # may be pulled in by langchain
+    "click",             # may be pulled in
+    "jsonpatch",
+    "jsonpointer",
+    "websockets",
+    "tzdata",            # stdlib-adjacent
+    "tenacity",
     "tradingagents",
     "tradingagents.dataflows",
     "tradingagents.graph",
     "tradingagents.llm_clients",
 ]
-hidden += collect_submodules("tradingagents.dataflows")
-hidden += collect_submodules("tradingagents.graph")
-hidden += collect_submodules("tradingagents.llm_clients")
-hidden += collect_submodules("akshare")
-hidden += collect_submodules("akshare.air")
-hidden += collect_submodules("akshare.article")
-hidden += collect_submodules("akshare.bank")
-hidden += collect_submodules("akshare.bond")
-hidden += collect_submodules("akshare.futures")
-hidden += collect_submodules("akshare.fx")
-hidden += collect_submodules("akshare.fund")
-hidden += collect_submodules("akshare.index")
-hidden += collect_submodules("akshare.stock")
-hidden += collect_submodules("akshare.coin")
-hidden += collect_submodules("akshare.option")
-hidden += collect_submodules("akshare.pro")
-hidden += collect_submodules("py_mini_racer")
-hidden += collect_submodules("curl_cffi")
-hidden += collect_submodules("lxml")
+# Pull in every submodule of the heavy packages so dynamic imports work.
+for pkg in [
+    "tradingagents.dataflows",
+    "tradingagents.graph",
+    "tradingagents.llm_clients",
+    "akshare",
+    "akshare.air",
+    "akshare.article",
+    "akshare.bank",
+    "akshare.bond",
+    "akshare.futures",
+    "akshare.fx",
+    "akshare.fund",
+    "akshare.index",
+    "akshare.stock",
+    "akshare.coin",
+    "akshare.option",
+    "akshare.pro",
+    "akshare.datasets",
+    "akshare.fortune",
+    "akshare.futures_derivative",
+    "akshare.other",
+    "akshare.qhkc",
+    "akshare.rate",
+    "py_mini_racer",
+    "curl_cffi",
+    "lxml",
+]:
+    try:
+        hidden += collect_submodules(pkg)
+    except Exception:
+        pass
 
+# -----------------------------------------------------------------------------
 # Data files (non-Python resources that must travel alongside the modules).
+# -----------------------------------------------------------------------------
 datas = []
 if ICON_ICNS.exists():
     datas.append((str(ICON_ICNS), "app_bundle/Resources"))
+for pkg in ("akshare", "py_mini_racer", "lxml", "curl_cffi", "yfinance", "bs4"):
+    try:
+        datas += collect_data_files(pkg, include_py_files=False)
+    except Exception:
+        pass
 
-# akshare ships a couple of JSON / JS resources + index files used by some
-# endpoints. collect_data_files walks the package and grabs them.
-try:
-    datas += collect_data_files("akshare", include_py_files=False)
-except Exception:
-    pass
-# py_mini_racer ships libmini_racer (.dylib / .dll / .so) + icudtl.dat.
-# These are critical runtime files - without them mini_racer FATAL-aborts.
-try:
-    datas += collect_data_files("py_mini_racer", include_py_files=False)
-except Exception:
-    pass
-# lxml has libxml2 / libxslt / libexslt shared libs.
-try:
-    datas += collect_data_files("lxml", include_py_files=False)
-except Exception:
-    pass
-# curl_cffi bundles its own libcurl. PyInstaller usually catches this
-# via its hook, but be explicit.
-try:
-    datas += collect_data_files("curl_cffi", include_py_files=False)
-except Exception:
-    pass
-
-# Modules we explicitly do not need.
+# -----------------------------------------------------------------------------
+# Excludes - trim the bundle.
+# -----------------------------------------------------------------------------
 excludes = [
     "tkinter",
     "PySide6.QtWebEngineCore",
