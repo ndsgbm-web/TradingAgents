@@ -1,0 +1,31 @@
+#!/bin/bash
+# Thin launcher for the TradingAgents desktop GUI.
+#
+# Strategy: this .app does NOT bundle Python/PySide6/reports. It activates the
+# existing venv at ~/TradingAgents/.venv and invokes `python -m deskapp`.
+# The GUI window is opened by the venv's Python process; the .app context
+# (dock icon, menu bar) is preserved because `exec` replaces the current
+# process image without changing the PID.
+#
+# Override the install location via the TRADINGAGENTS_DIR environment
+# variable (e.g. for users who cloned the repo elsewhere).
+
+set -e
+
+# Resolve the TradingAgents repo root
+if [[ -n "$TRADINGAGENTS_DIR" ]]; then
+    TA_DIR="$TRADINGAGENTS_DIR"
+else
+    TA_DIR="$HOME/TradingAgents"
+fi
+
+VENV_PY="$TA_DIR/.venv/bin/python"
+
+if [[ ! -x "$VENV_PY" ]]; then
+    # Show a native error dialog via osascript
+    osascript -e "display alert \"TradingAgents\" message \"找不到 TradingAgents 安装目录：\\n$TA_DIR\\n\\n请先在该目录运行：\\nuv venv && uv pip install -e . && uv pip install PySide6\" as critical" >/dev/null 2>&1 || true
+    exit 1
+fi
+
+cd "$TA_DIR"
+exec "$VENV_PY" -m deskapp

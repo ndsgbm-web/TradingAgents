@@ -93,6 +93,25 @@ Our framework decomposes complex trading tasks into specialized roles.
   <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
+## 桌面 GUI 下载（Windows / macOS）
+
+不想配置 Python？直接从 [GitHub Releases](https://github.com/ndsgbm-web/TradingAgents/releases) 下载自包含的 `TradingAgents-full.exe`（Windows，约 180–220 MB）。双击即可运行。
+
+### 首次启动
+
+1. 双击 `TradingAgents-full.exe`。
+2. 没有检测到 `.env` 时会弹窗要求输入 **MiniMax API Key**（[申请地址](https://api.minimaxi.com)）。
+3. Key 会保存在 exe 同目录下的 `.env` 中，下次启动自动读取。
+4. 想重置：删除同目录的 `.env` 后重新启动 exe。
+
+### 导出 Word（可选）
+
+报告页有「导出 Word…」按钮，依赖 pandoc。下载后第一次导出若提示缺失，请按提示安装：
+
+- macOS: `brew install pandoc`
+- Windows: `winget install JohnMacFarlane.Pandoc`
+- Linux: `sudo apt install pandoc`
+
 ## Installation and CLI
 
 ### Installation

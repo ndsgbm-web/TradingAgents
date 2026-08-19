@@ -152,6 +152,14 @@ def load_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
     subsequent calls the cache is reused. Rows after curr_date are
     filtered out so backtests never see future prices.
     """
+    # CN tickers: route to AkShare/Sina — yfinance returns nothing for A-shares.
+    try:
+        from .akshare_cn import is_cn_symbol, _slice_kline
+    except Exception:  # pragma: no cover
+        is_cn_symbol = None  # type: ignore[assignment]
+    if is_cn_symbol and is_cn_symbol(symbol):
+        return _load_ohlcv_cn(symbol, curr_date)
+
     # Resolve broker/forex symbols (XAUUSD+ -> GC=F) to Yahoo's convention,
     # then reject values that would escape the cache directory when
     # interpolated into the cache filename (e.g. ``../../tmp/x``).
@@ -259,3 +267,27 @@ class StockstatsUtils:
             return indicator_value
         else:
             return "N/A: Not a trading day (weekend or holiday)"
+
+
+def _load_ohlcv_cn(symbol: str, curr_date: str) -> pd.DataFrame:
+    """A-share OHLCV via AkShare/Sina, normalized to Yahoo column conventions."""
+    from .akshare_cn import _slice_kline
+
+    df = _slice_kline(symbol, curr_date, look_back_days=400)
+    # Sina K-line columns: date, open, high, low, close, volume, ... (lowercase).
+    rename = {
+        "date": "Date",
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "volume": "Volume",
+    }
+    df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+    cutoff = pd.to_datetime(curr_date)
+    df = df[df["Date"] <= cutoff]
+    if df.empty:
+        raise NoMarketDataError(symbol, symbol, "AkShare returned no rows on/before curr_date")
+    return df

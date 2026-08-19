@@ -11,6 +11,18 @@ from .alpha_vantage import (
     get_news as get_alpha_vantage_news,
     get_stock as get_alpha_vantage_stock,
 )
+from .akshare_cn import is_cn_symbol
+from .akshare_cn import get_stock_data as cn_akshare_stock
+from .akshare_cn import (
+    get_indicators as cn_akshare_indicators,
+    get_fundamentals as cn_akshare_fundamentals,
+    get_balance_sheet as cn_akshare_balance_sheet,
+    get_cashflow as cn_akshare_cashflow,
+    get_income_statement as cn_akshare_income_statement,
+    get_news as cn_akshare_news,
+    get_global_news as cn_akshare_global_news,
+    get_insider_transactions as cn_akshare_insider,
+)
 from .config import get_config
 from .errors import (
     NoMarketDataError,
@@ -79,6 +91,7 @@ TOOLS_CATEGORIES = {
 
 VENDOR_LIST = [
     "yfinance",
+    "cn_akshare",
     "fred",
     "polymarket",
     "alpha_vantage",
@@ -95,41 +108,50 @@ OPTIONAL_CATEGORIES = {"macro_data", "prediction_markets"}
 VENDOR_METHODS = {
     # core_stock_apis
     "get_stock_data": {
+        "cn_akshare": cn_akshare_stock,
         "alpha_vantage": get_alpha_vantage_stock,
         "yfinance": get_YFin_data_online,
     },
     # technical_indicators
     "get_indicators": {
+        "cn_akshare": cn_akshare_indicators,
         "alpha_vantage": get_alpha_vantage_indicator,
         "yfinance": get_stock_stats_indicators_window,
     },
     # fundamental_data
     "get_fundamentals": {
+        "cn_akshare": cn_akshare_fundamentals,
         "alpha_vantage": get_alpha_vantage_fundamentals,
         "yfinance": get_yfinance_fundamentals,
     },
     "get_balance_sheet": {
+        "cn_akshare": cn_akshare_balance_sheet,
         "alpha_vantage": get_alpha_vantage_balance_sheet,
         "yfinance": get_yfinance_balance_sheet,
     },
     "get_cashflow": {
+        "cn_akshare": cn_akshare_cashflow,
         "alpha_vantage": get_alpha_vantage_cashflow,
         "yfinance": get_yfinance_cashflow,
     },
     "get_income_statement": {
+        "cn_akshare": cn_akshare_income_statement,
         "alpha_vantage": get_alpha_vantage_income_statement,
         "yfinance": get_yfinance_income_statement,
     },
     # news_data
     "get_news": {
+        "cn_akshare": cn_akshare_news,
         "alpha_vantage": get_alpha_vantage_news,
         "yfinance": get_news_yfinance,
     },
     "get_global_news": {
+        "cn_akshare": cn_akshare_global_news,
         "yfinance": get_global_news_yfinance,
         "alpha_vantage": get_alpha_vantage_global_news,
     },
     "get_insider_transactions": {
+        "cn_akshare": cn_akshare_insider,
         "alpha_vantage": get_alpha_vantage_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
     },
@@ -170,6 +192,22 @@ def route_to_vendor(method: str, *args, **kwargs):
     category = get_category_for_method(method)
     vendor_config = get_vendor(category, method)
     primary_vendors = [v.strip() for v in vendor_config.split(',')]
+
+    # Auto-route A-share tickers (.SZ/.SH/.SHZ/.BJ) to the cn_akshare vendor
+    # first. The existing chain is preserved as a fallback (typical: yfinance
+    # -> cn_akshare if yfinance fails for the symbol). Inserts go at the front
+    # so cn_akshare is preferred, never silently disabled.
+    if method in VENDOR_METHODS and "cn_akshare" in VENDOR_METHODS[method]:
+        ticker_arg = None
+        if args:
+            ticker_arg = args[0]
+        elif "symbol" in kwargs:
+            ticker_arg = kwargs["symbol"]
+        elif "ticker" in kwargs:
+            ticker_arg = kwargs["ticker"]
+        if isinstance(ticker_arg, str) and is_cn_symbol(ticker_arg):
+            primary_vendors = [v for v in primary_vendors if v and v != "default"]
+            primary_vendors = ["cn_akshare"] + [v for v in primary_vendors if v != "cn_akshare"]
 
     if method not in VENDOR_METHODS:
         raise ValueError(f"Method '{method}' not supported")

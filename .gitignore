@@ -221,3 +221,13 @@ __marimo__/
 # Enterprise env file (secrets) and generated run reports
 .env.enterprise
 reports/
+
+# Personal analysis outputs (must NEVER be committed to a public repo)
+results/
+
+# OS / editor / backup cruft
+.DS_Store
+*.bak
+*.swp
+*~
+Thumbs.db

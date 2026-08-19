@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TradingAgents · 中文投研面板</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --line: #e2e5ea;
+    --ink: #1b1f27;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-ink: #ffffff;
+    --ok: #059669;
+    --warn: #d97706;
+    --err: #dc2626;
+    --code-bg: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 16px;
+    padding: 16px 20px;
+    height: calc(100vh - 53px);
+  }
+  .side, .main { display: flex; flex-direction: column; min-height: 0; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .panel + .panel { margin-top: 12px; }
+  .panel h3 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input[type="text"], input[type="date"] {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+    color: var(--ink);
+    font-family: inherit;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+
+  /* Symbol search combobox */
+  .symbol-search { position: relative; }
+  .symbol-search input { padding-right: 88px; }
+  .symbol-search .hint {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 11px; pointer-events: none;
+  }
+  .search-results {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; max-height: 320px; overflow-y: auto;
+    margin-top: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    display: none;
+  }
+  .search-results.visible { display: block; }
+  .search-result {
+    padding: 8px 10px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .search-result:last-child { border-bottom: 0; }
+  .search-result:hover, .search-result.focused { background: #f0f4ff; }
+  .search-result .badge {
+    font-size: 10px; padding: 2px 6px; border-radius: 999px;
+    background: #eef2ff; color: var(--accent); font-weight: 600;
+    flex-shrink: 0; text-transform: none; letter-spacing: 0;
+  }
+  .search-result .badge.market-港股 { background: #fef3c7; color: #b45309; }
+  .search-result .badge.market-美股 { background: #d1fae5; color: #047857; }
+  .search-result .badge.market-全球 { background: #f3f4f6; color: var(--muted); }
+  .search-result .sym {
+    font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .search-result .nm {
+    color: var(--muted); font-size: 12px; flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .search-result .ex { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+  .search-empty { padding: 14px 10px; color: var(--muted); font-size: 12px; text-align: center; }
+  .selected-chip {
+    margin-top: 8px; display: none; align-items: center; gap: 8px;
+    padding: 7px 10px; border: 1px solid var(--accent);
+    background: #e0e9ff; border-radius: 6px; font-size: 13px;
+  }
+  .selected-chip.visible { display: flex; }
+  .selected-chip .sym {
+    font-weight: 600; color: var(--accent);
+    font-variant-numeric: tabular-nums; flex-shrink: 0;
+  }
+  .selected-chip .nm {
+    flex: 1; min-width: 0; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .selected-chip .clear {
+    background: transparent; border: 0; color: var(--muted);
+    cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1;
+  }
+  .selected-chip .clear:hover { color: var(--err); }
+
+  button {
+    padding: 8px 14px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary {
+    background: transparent;
+    color: var(--accent);
+  }
+  button.wide { width: 100%; margin-top: 10px; }
+
+  .history { overflow-y: auto; flex: 1; min-height: 0; }
+  .history-item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+  }
+  .history-item:hover { background: #f0f4ff; }
+  .history-item.active { background: #e0e9ff; border-color: var(--accent); }
+  .history-item .tk { font-weight: 600; font-size: 13px; }
+  .history-item .dt { color: var(--muted); font-size: 11px; }
+  .history-item .dec { font-size: 11px; margin-top: 2px; }
+  .dec-buy { color: var(--ok); }
+  .dec-sell { color: var(--err); }
+  .dec-hold { color: var(--warn); }
+
+
+  .history-section-title {
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin: 4px 0 6px; font-weight: 600;
+  }
+  #activeRuns { flex-shrink: 0; }
+  .history-item.running .tk::before {
+    content: ""; display: inline-block; width: 7px; height: 7px;
+    background: var(--ok); border-radius: 50%; margin-right: 6px;
+    animation: pulse 1.5s infinite;
+    vertical-align: middle;
+  }
+
+  .progress-panel { display: none; margin-bottom: 12px; }
+  .progress-panel.visible { display: block; }
+  .stage-list { list-style: none; padding: 0; margin: 0; }
+  .stage-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 13px;
+  }
+  .stage-item .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--line);
+    flex-shrink: 0;
+  }
+  .stage-item.done .dot { background: var(--ok); }
+  .stage-item.active .dot { background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  .stage-item .lbl { flex: 1; }
+  .stage-item .elapsed { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .stage-item.active .lbl { color: var(--accent); font-weight: 500; }
+  .stage-item.done .lbl { color: var(--ink); }
+  .stage-item.pending .lbl { color: var(--muted); }
+
+  .report-tabs {
+    display: flex; gap: 4px; border-bottom: 1px solid var(--line);
+    margin-bottom: 12px; overflow-x: auto; flex-shrink: 0;
+  }
+  .report-tab {
+    padding: 8px 12px; background: transparent; border: 0;
+    color: var(--muted); font-size: 13px; font-weight: 500;
+    cursor: pointer; border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .report-tab:hover { color: var(--ink); }
+  .report-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .report-body {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    padding: 4px 8px 24px;
+  }
+  .report-body h1 { font-size: 22px; margin: 12px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  .report-body h2 { font-size: 17px; margin: 18px 0 8px; }
+  .report-body h3 { font-size: 14px; margin: 14px 0 6px; }
+  .report-body p { margin: 6px 0; }
+  .report-body ul, .report-body ol { padding-left: 22px; margin: 6px 0; }
+  .report-body table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 13px; }
+  .report-body th, .report-body td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+  .report-body th { background: #f9fafb; font-weight: 600; }
+  .report-body code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .report-body blockquote {
+    margin: 10px 0; padding: 8px 14px;
+    border-left: 3px solid var(--accent);
+    background: #f0f4ff; color: var(--ink);
+  }
+  .report-body hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+  .empty-state {
+    color: var(--muted); text-align: center; padding: 60px 20px;
+    font-size: 13px;
+  }
+  .error-banner {
+    background: #fef2f2; color: var(--err); padding: 8px 12px;
+    border-radius: 6px; margin-bottom: 10px; font-size: 13px;
+    border: 1px solid #fecaca;
+  }
+  .run-meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .run-meta strong { color: var(--ink); }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TradingAgents</h1>
+  <span class="sub">多智能体投研分析 · MiniMax M3</span>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <div class="panel">
+      <h3>新建分析</h3>
+      <div>
+        <label>股票</label>
+        <div class="symbol-search">
+          <input id="searchInput" type="text"
+            placeholder="输入名称或代码，如 特斯拉 / TSLA / 600519"
+            autocomplete="off" spellcheck="false">
+          <span class="hint">↑↓ 选择 · Enter 确认</span>
+          <div id="searchResults" class="search-results"></div>
+        </div>
+        <div id="selectedChip" class="selected-chip">
+          <span class="badge" id="selMarket">—</span>
+          <span class="sym" id="selSymbol">—</span>
+          <span class="nm" id="selName">—</span>
+          <button class="clear" id="clearSelection" title="清除选择">×</button>
+        </div>
+      </div>
+      <div style="margin-top: 10px;">
+        <label>分析日期</label>
+        <input id="date" type="date">
+      </div>
+      <button id="runBtn" class="wide" disabled>运行分析</button>
+    </div>
+
+    <div class="panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+      <h3>历史记录</h3>
+      <div id="activeRuns"></div>
+      <div id="history" class="history"></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div id="progressPanel" class="panel progress-panel">
+      <h3>运行进度</h3>
+      <div class="run-meta">
+        <strong id="runTicker">-</strong> · <span id="runDate">-</span> · 已用时 <span id="runElapsed">0s</span>
+      </div>
+      <ul id="stageList" class="stage-list"></ul>
+      <div id="errBanner"></div>
+    </div>
+
+    <div class="panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+      <div class="report-tabs" id="tabs"></div>
+      <div class="report-body" id="reportBody">
+        <div class="empty-state">在左侧输入股票代码并点击「运行分析」，或从历史记录中选择一次结果。</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  const $ = (sel) => document.querySelector(sel);
+  const searchInput = $("#searchInput");
+  const dateInput = $("#date");
+  const runBtn = $("#runBtn");
+  const searchResults = $("#searchResults");
+  const selectedChip = $("#selectedChip");
+  const selSymbolEl = $("#selSymbol");
+  const selNameEl = $("#selName");
+  const selMarketEl = $("#selMarket");
+  const clearSelectionBtn = $("#clearSelection");
+  const progressPanel = $("#progressPanel");
+  const stageList = $("#stageList");
+  const tabsEl = $("#tabs");
+  const reportBody = $("#reportBody");
+  const historyEl = $("#history");
+  const activeRunsEl = $("#activeRuns");
+  let activeRuns = [];
+  let activePollTimer = null;
+  const errBanner = $("#errBanner");
+  const runTickerEl = $("#runTicker");
+  const runDateEl = $("#runDate");
+  const runElapsedEl = $("#runElapsed");
+
+  const STAGES = [
+    ["market_report", "市场分析师"],
+    ["sentiment_report", "情绪分析师"],
+    ["news_report", "新闻分析师"],
+    ["fundamentals_report", "基本面分析师"],
+    ["investment_plan", "研究经理"],
+    ["trader_investment_plan", "交易员"],
+    ["risk_debate_state", "风险分析师"],
+    ["final_trade_decision", "投资组合经理"],
+  ];
+  const POST_STAGES = [
+    ["merge_report", "合并报告"],
+    ["summarize", "生成摘要"],
+  ];
+
+  let currentRunId = null;
+  let currentTicker = null;
+  let currentDate = null;
+  let eventSource = null;
+  let elapsedTimer = null;
+  let startedAt = null;
+  let selectedSymbol = null;
+  let currentResults = [];
+  let focusedIdx = -1;
+  let searchDebounce = null;
+  let searchAbort = null;
+
+  // Default date = today.
+  dateInput.value = new Date().toISOString().slice(0, 10);
+
+  function setRunning(running) {
+    runBtn.disabled = running;
+    runBtn.textContent = running ? "运行中…" : "运行分析";
+  }
+
+  function startElapsedTimer() {
+    stopElapsedTimer();
+    elapsedTimer = setInterval(() => {
+      if (startedAt) {
+        const s = Math.round((Date.now() - startedAt) / 1000);
+        const mm = Math.floor(s / 60);
+        const ss = s % 60;
+        runElapsedEl.textContent = mm > 0 ? `${mm}m ${ss}s` : `${ss}s`;
+      }
+    }, 500);
+  }
+  function stopElapsedTimer() {
+    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+  }
+
+  function renderStages(stageStates) {
+    stageList.innerHTML = "";
+    for (const [field, label] of STAGES) {
+      const li = document.createElement("li");
+      li.className = "stage-item " + (stageStates[field] || "pending");
+      li.dataset.field = field;
+      li.innerHTML = `<span class="dot"></span><span class="lbl">${label}</span><span class="elapsed"></span>`;
+      stageList.appendChild(li);
+    }
+    for (const [key, label] of POST_STAGES) {
+      const li = document.createElement("li");
+      li.className = "stage-item " + (stageStates[key] || "pending");
+      li.dataset.field = key;
+      li.innerHTML = `<span class="dot"></span><span class="lbl">${label}</span><span class="elapsed"></span>`;
+      stageList.appendChild(li);
+    }
+  }
+
+  function updateStage(field, status, elapsed) {
+    const li = stageList.querySelector(`[data-field="${field}"]`);
+    if (!li) return;
+    li.className = "stage-item " + status;
+    if (elapsed != null) {
+      li.querySelector(".elapsed").textContent = `${elapsed}s`;
+    }
+  }
+
+  function showError(msg) {
+    errBanner.innerHTML = `<div class="error-banner">${escapeHtml(msg)}</div>`;
+  }
+  function clearError() { errBanner.innerHTML = ""; }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[c]);
+  }
+
+  function refreshRunBtn() {
+    // While a run is in flight, setRunning(true) already sets disabled=true.
+    // Only guard against the user's missing selections here.
+    runBtn.disabled = !selectedSymbol || !dateInput.value;
+  }
+
+  function renderSearchResults(items) {
+    currentResults = items;
+    focusedIdx = -1;
+    searchResults.innerHTML = "";
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "search-empty";
+      empty.textContent = "没有匹配的股票，请换个名称或代码试试";
+      searchResults.appendChild(empty);
+      searchResults.classList.add("visible");
+      return;
+    }
+    items.forEach((it, i) => {
+      const div = document.createElement("div");
+      div.className = "search-result";
+      const market = it.market || "—";
+      div.innerHTML =
+        '<span class="badge market-' + escapeHtml(market) + '">' + escapeHtml(market) + '</span>' +
+        '<span class="sym">' + escapeHtml(it.symbol) + '</span>' +
+        '<span class="nm">' + escapeHtml(it.name || "") + '</span>' +
+        '<span class="ex">' + escapeHtml(it.exchange || "") + '</span>';
+      div.addEventListener("mousedown", (e) => {
+        // mousedown so it fires before the input blur closes the dropdown
+        e.preventDefault();
+        pickResult(it);
+      });
+      div.addEventListener("mouseenter", () => setFocused(i));
+      searchResults.appendChild(div);
+    });
+    searchResults.classList.add("visible");
+  }
+
+  function setFocused(i) {
+    focusedIdx = i;
+    [...searchResults.querySelectorAll(".search-result")].forEach((el, idx) => {
+      el.classList.toggle("focused", idx === i);
+      if (idx === i) el.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  function pickResult(item) {
+    selectedSymbol = item.symbol;
+    selSymbolEl.textContent = item.symbol;
+    selNameEl.textContent = item.name || "";
+    selMarketEl.textContent = item.market || "—";
+    selectedChip.classList.add("visible");
+    searchResults.classList.remove("visible");
+    searchInput.value = "";
+    searchInput.placeholder = "已选择 " + item.symbol + " — 重新搜索可改选";
+    refreshRunBtn();
+  }
+
+  function clearSelection() {
+    selectedSymbol = null;
+    selectedChip.classList.remove("visible");
+    searchInput.value = "";
+    searchInput.placeholder = "输入名称或代码，如 特斯拉 / TSLA / 600519";
+    refreshRunBtn();
+    searchInput.focus();
+  }
+
+  async function runSearch(q) {
+    if (searchAbort) searchAbort.abort();
+    searchAbort = new AbortController();
+    try {
+      const url = "/api/search?q=" + encodeURIComponent(q) + "&limit=12";
+      const r = await fetch(url, { signal: searchAbort.signal });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      renderSearchResults(await r.json());
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      searchResults.innerHTML =
+        '<div class="search-empty">搜索失败：' + escapeHtml(e.message) + "</div>";
+      searchResults.classList.add("visible");
+    }
+  }
+
+  searchInput.addEventListener("input", () => {
+    clearTimeout(searchDebounce);
+    const q = searchInput.value.trim();
+    if (!q) { searchResults.classList.remove("visible"); return; }
+    searchDebounce = setTimeout(() => runSearch(q), 220);
+  });
+  searchInput.addEventListener("focus", () => {
+    if (currentResults.length) searchResults.classList.add("visible");
+  });
+  searchInput.addEventListener("blur", () => {
+    // Delay so mousedown on results still fires
+    setTimeout(() => searchResults.classList.remove("visible"), 150);
+  });
+  searchInput.addEventListener("keydown", (e) => {
+    if (!searchResults.classList.contains("visible") || !currentResults.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setFocused(Math.min(focusedIdx + 1, currentResults.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setFocused(Math.max(focusedIdx - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (focusedIdx >= 0) pickResult(currentResults[focusedIdx]);
+    } else if (e.key === "Escape") {
+      searchResults.classList.remove("visible");
+    }
+  });
+  clearSelectionBtn.addEventListener("click", clearSelection);
+  dateInput.addEventListener("input", refreshRunBtn);
+
+  async function startRun() {
+    if (!selectedSymbol) { alert("请先在上方搜索并选择一只股票"); return; }
+    const ticker = selectedSymbol;
+    const date = dateInput.value;
+    if (!date) { alert("请选择日期"); return; }
+
+    setRunning(true);
+    clearError();
+    progressPanel.classList.add("visible");
+    runTickerEl.textContent = ticker;
+    runDateEl.textContent = date;
+    startedAt = Date.now();
+    startElapsedTimer();
+    renderStages({});
+    reportBody.innerHTML = `<div class="empty-state">正在分析 ${escapeHtml(ticker)}…</div>`;
+    tabsEl.innerHTML = "";
+
+    try {
+      const resp = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker, date }),
+      });
+      if (!resp.ok) {
+        const t = await resp.text();
+        throw new Error(`HTTP ${resp.status}: ${t}`);
+      }
+      const data = await resp.json();
+      currentRunId = data.run_id;
+      currentTicker = ticker;
+      currentDate = date;
+      subscribeEvents(currentRunId);
+    } catch (e) {
+      showError("启动失败: " + e.message);
+      setRunning(false);
+      stopElapsedTimer();
+    }
+  }
+
+  function subscribeEvents(runId) {
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    eventSource = new EventSource(`/api/run/${runId}/events`);
+    eventSource.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        handleEvent(data);
+      } catch (e) { /* ignore */ }
+    };
+    eventSource.onerror = () => {
+      // SSE will retry automatically; just log.
+      console.warn("SSE error");
+    };
+  }
+
+  function handleEvent(ev) {
+    if (ev.type === "stage") {
+      updateStage(ev.field, "done", ev.elapsed);
+    } else if (ev.type === "postprocess") {
+      updateStage(ev.step, "done");
+    } else if (ev.type === "propagate_done") {
+      // mark all main stages done
+      for (const [field] of STAGES) updateStage(field, "done");
+    } else if (ev.type === "run_done") {
+      stopElapsedTimer();
+      setRunning(false);
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      loadReports(currentTicker, currentDate);
+      refreshHistory();
+    } else if (ev.type === "run_error") {
+      stopElapsedTimer();
+      setRunning(false);
+      showError(ev.error || "运行失败");
+      if (eventSource) { eventSource.close(); eventSource = null; }
+    } else if (ev.type === "stream_end") {
+      if (eventSource) { eventSource.close(); eventSource = null; }
+    }
+  }
+
+  async function loadReports(ticker, date) {
+    const files = [
+      { key: "摘要", name: "摘要.md", label: "摘要" },
+      { key: "完整", name: "完整报告.md", label: "完整报告" },
+      { key: "market", name: "market_report.md", label: "市场" },
+      { key: "fund", name: "fundamentals_report.md", label: "基本面" },
+      { key: "news", name: "news_report.md", label: "新闻" },
+      { key: "sent", name: "sentiment_report.md", label: "情绪" },
+      { key: "plan", name: "investment_plan.md", label: "研究经理" },
+      { key: "trader", name: "trader_investment_plan.md", label: "交易员" },
+      { key: "final", name: "final_trade_decision.md", label: "最终决策" },
+    ];
+
+    tabsEl.innerHTML = "";
+    reportBody.innerHTML = `<div class="empty-state">加载报告…</div>`;
+
+    const available = [];
+    for (const f of files) {
+      try {
+        const r = await fetch(`/api/runs/${encodeURIComponent(ticker)}/${encodeURIComponent(date)}/files/${encodeURIComponent(f.name)}`);
+        if (r.ok) {
+          available.push({ ...f, text: await r.text() });
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    if (!available.length) {
+      reportBody.innerHTML = `<div class="empty-state">没有找到 ${escapeHtml(ticker)} 在 ${escapeHtml(date)} 的报告文件。</div>`;
+      return;
+    }
+
+    available.forEach((f, i) => {
+      const btn = document.createElement("button");
+      btn.className = "report-tab" + (i === 0 ? " active" : "");
+      btn.textContent = f.label;
+      btn.onclick = () => {
+        tabsEl.querySelectorAll(".report-tab").forEach((t) => t.classList.remove("active"));
+        btn.classList.add("active");
+        renderMarkdown(f.text);
+      };
+      tabsEl.appendChild(btn);
+    });
+
+    renderMarkdown(available[0].text);
+  }
+
+  function renderMarkdown(text) {
+    const html = DOMPurify.sanitize(marked.parse(text));
+    reportBody.innerHTML = html;
+  }
+
+  async function refreshHistory() {
+    try {
+      const r = await fetch("/api/runs");
+      const runs = await r.json();
+      historyEl.innerHTML = "";
+      if (!runs.length) {
+        historyEl.innerHTML = `<div class="empty-state" style="padding:20px;">暂无历史记录</div>`;
+        return;
+      }
+      for (const run of runs) {
+        const div = document.createElement("div");
+        div.className = "history-item";
+        const dec = (run.decision || "").toLowerCase();
+        let decCls = "";
+        if (/buy|overweight|long/.test(dec)) decCls = "dec-buy";
+        else if (/sell|underweight|short/.test(dec)) decCls = "dec-sell";
+        else if (/hold|neutral/.test(dec)) decCls = "dec-hold";
+        div.innerHTML = `
+          <div class="tk">${escapeHtml(run.ticker)}</div>
+          <div class="dt">${escapeHtml(run.date)}</div>
+          ${run.decision ? `<div class="dec ${decCls}">${escapeHtml(run.decision)}</div>` : ""}
+        `;
+        div.onclick = () => {
+          document.querySelectorAll(".history-item").forEach((el) => el.classList.remove("active"));
+          div.classList.add("active");
+          currentTicker = run.ticker;
+          currentDate = run.date;
+          loadReports(run.ticker, run.date);
+        };
+        historyEl.appendChild(div);
+      }
+    } catch (e) {
+      historyEl.innerHTML = `<div class="empty-state" style="padding:20px;">加载失败: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  async function refreshActiveRuns() {
+    try {
+      const r = await fetch("/api/runs/active");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      activeRuns = await r.json();
+    } catch (e) {
+      activeRuns = [];
+    }
+    renderActiveRuns();
+    // Keep polling while at least one run is in flight. When the last run
+    // finishes, the timer stops and the next history refresh picks up
+    // the freshly-completed entries.
+    if (activeRuns.length) {
+      if (!activePollTimer) activePollTimer = setInterval(refreshActiveRuns, 4000);
+    } else {
+      if (activePollTimer) { clearInterval(activePollTimer); activePollTimer = null; }
+    }
+  }
+
+  function renderActiveRuns() {
+    activeRunsEl.innerHTML = "";
+    if (!activeRuns.length) return;
+    const heading = document.createElement("div");
+    heading.className = "history-section-title";
+    heading.textContent = "运行中";
+    activeRunsEl.appendChild(heading);
+    for (const run of activeRuns) {
+      const div = document.createElement("div");
+      div.className = "history-item running";
+      div.dataset.runId = run.id;
+      const elapsed = run.elapsed ? `${Math.round(run.elapsed)}s` : "";
+      div.innerHTML =
+        '<div class="tk">' + escapeHtml(run.ticker) + '</div>' +
+        '<div class="dt">' + escapeHtml(run.date) + " · 已用时 " + escapeHtml(elapsed) + "</div>";
+      div.onclick = () => attachToRun(run);
+      activeRunsEl.appendChild(div);
+    }
+  }
+
+  function attachToRun(run) {
+    document.querySelectorAll(".history-item").forEach((el) => el.classList.remove("active"));
+    [...activeRunsEl.querySelectorAll(".history-item")].forEach((el) => {
+      if (el.dataset.runId === run.id) el.classList.add("active");
+    });
+    currentRunId = run.id;
+    currentTicker = run.ticker;
+    currentDate = run.date;
+    progressPanel.classList.add("visible");
+    runTickerEl.textContent = run.ticker;
+    runDateEl.textContent = run.date;
+    startedAt = (run.started_at || (Date.now() / 1000)) * 1000;
+    startElapsedTimer();
+    renderStages({});
+    reportBody.innerHTML = '<div class="empty-state">继续跟踪 ' + escapeHtml(run.ticker) + " 的分析…</div>";
+    tabsEl.innerHTML = "";
+    setRunning(true);
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    eventSource = new EventSource(`/api/run/${run.id}/events`);
+    eventSource.onmessage = (ev) => {
+      try { handleEvent(JSON.parse(ev.data)); } catch (e) { /* ignore */ }
+    };
+  }
+
+  runBtn.addEventListener("click", startRun);
+  refreshRunBtn();
+  refreshActiveRuns();
+  refreshHistory();
+
+  // Support deep-link via URL hash: #run=TICKER,DATE
+  // Auto-clicks the matching history item once history has loaded.
+  (function autoLoadFromHash() {
+    const m = location.hash.match(/^#run=([^,]+),(.+)$/);
+    if (!m) return;
+    const [, tk, dt] = m;
+    const tryClick = () => {
+      const items = document.querySelectorAll(".history-item");
+      for (const it of items) {
+        if (it.textContent.includes(tk) && it.textContent.includes(dt)) {
+          it.click();
+          return true;
+        }
+      }
+      return false;
+    };
+    // Retry a few times — history loads async.
+    let attempts = 0;
+    const timer = setInterval(() => {
+      if (tryClick() || ++attempts > 20) clearInterval(timer);
+    }, 200);
+  })();
+})();
+</script>
+
+</body>
+</html>

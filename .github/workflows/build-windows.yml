@@ -1,0 +1,60 @@
+name: build-windows
+
+# Build TradingAgents-full.exe (self-contained, PyInstaller) and attach
+# it to a GitHub Release. The thin-launcher path was deliberately dropped
+# per project decision; users only need Python if they want to develop.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # required to create / upload release assets
+
+jobs:
+  build:
+    name: Build TradingAgents-full.exe
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install project + GUI + build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyside6 markdown-it-py pygments pyinstaller
+
+      - name: Build (PyInstaller)
+        run: pyinstaller deskapp/TradingAgents.spec --noconfirm --clean
+
+      - name: Verify artifact
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist/TradingAgents-full.exe)) {
+            Write-Error "dist/TradingAgents-full.exe missing"
+            exit 1
+          }
+          Get-Item dist/TradingAgents-full.exe | Select-Object Name, Length, LastWriteTime
+
+      - name: SHA-256 checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/TradingAgents-full.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  TradingAgents-full.exe" | Out-File -Encoding ASCII dist/CHECKSUM.txt
+          Get-Content dist/CHECKSUM.txt
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/TradingAgents-full.exe
+            dist/CHECKSUM.txt
+          fail_on_unmatched_files: true
+          generate_release_notes: true
