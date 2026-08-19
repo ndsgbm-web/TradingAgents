@@ -1,24 +1,32 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for the self-contained TradingAgents desktop app.
 
-Build:
+Build (from the repo root):
     pyinstaller deskapp/TradingAgents.spec --noconfirm --clean
 
 Output:
     dist/TradingAgents-full.exe      (~180-220 MB, onefile, windowed)
+
+We resolve paths from ``os.getcwd()`` (the workflow's checkout root)
+instead of ``Path(SPECPATH).parent.parent``: on the Windows
+``windows-latest`` GitHub runner the workspace is the repo root itself
+(D:\\a\\<repo>), so computing the repo root from SPECPATH would resolve
+one directory too high. ``os.getcwd()`` is unambiguous in every case.
 """
+import os
 import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
 
-ROOT = Path(SPECPATH).resolve().parent.parent  # repo root
+# Repo root: where `pyinstaller` was invoked from.
+ROOT = Path(os.getcwd()).resolve()
 RES = ROOT / "deskapp" / "app_bundle" / "Resources"
 ICON_ICNS = RES / "icon.icns"
 ICON_ICO = RES / "icon.ico"  # optional, only present on Windows builds
 
 # Pick the icon appropriate to the host OS. PyInstaller errors if the icon
-# path doesn't exist, so we leave it None when neither format is present.
+# path doesn't exist, so leave it None when neither format is present.
 if sys.platform == "win32" and ICON_ICO.exists():
     ICON = str(ICON_ICO)
 elif ICON_ICNS.exists():
@@ -73,10 +81,14 @@ excludes = [
     "pytest",
 ]
 
+# PyInstaller prefers forward slashes in script paths; use as_posix() so the
+# path is consistent on every OS.
+ENTRY = (ROOT / "deskapp" / "__main__.py").as_posix()
+PATHEX = ROOT.as_posix()
 
 a = Analysis(
-    [str(ROOT / "deskapp" / "__main__.py")],
-    pathex=[str(ROOT)],
+    [ENTRY],
+    pathex=[PATHEX],
     binaries=[],
     datas=datas,
     hiddenimports=hidden,
