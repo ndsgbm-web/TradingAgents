@@ -138,7 +138,10 @@ def _classify_global(symbol: str, exchange: str | None) -> tuple[str, str]:
         return ("港股", "港交所")
     if exch in {"SHH", "SHE", "SSE", "SZSE"} or sym.endswith((".SS", ".SH", ".SZ", ".BJ")):
         return ("A股", "上交所" if sym.endswith((".SS", ".SH")) else "深交所")
-    if exch in {"NASDAQ", "NYSE", "NYQ", "NMS", "NGM", "PCX", "ASE", "BATS", "XETRA", "LSE", "JPX", "ASX"}:
+    if exch in {
+        "NASDAQ", "NYSE", "NYQ", "NMS", "NGM", "PCX", "ASE", "BATS",
+        "XETRA", "LSE", "JPX", "ASX",
+    }:
         return ("全球", exch or "—")
     return ("全球", exch or "—")
 

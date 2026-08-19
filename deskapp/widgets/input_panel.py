@@ -7,7 +7,12 @@ The ticker field is a QComboBox in editable mode so users can:
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, QTimer, Signal
+from PySide6.QtCore import (
+    QDate,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -20,8 +25,7 @@ from PySide6.QtWidgets import (
 
 from ..core.i18n import T
 from ..core.symbol_search import search_async
-from ..core.ticker_utils import infer_a_share_exchange, normalize_ticker
-
+from ..core.ticker_utils import normalize_ticker
 
 _DEBOUNCE_MS = 250
 _SEARCH_LIMIT = 8
@@ -144,7 +148,10 @@ class InputPanel(QWidget):
             self.ticker_combo.blockSignals(True)
             self.ticker_combo.clear()
             for hit in hits:
-                display = f"{hit.get('symbol','')}  ·  {hit.get('name','')}  [{hit.get('market','')}]"
+                display = (
+                    f"{hit.get('symbol','')}  ·  {hit.get('name','')}"
+                    f"  [{hit.get('market','')}]"
+                )
                 self.ticker_combo.addItem(display, hit.get("symbol", ""))
             # restore current text
             self.ticker_combo.setCurrentText(current if current else "")
@@ -188,10 +195,7 @@ class InputPanel(QWidget):
     def _on_run(self) -> None:
         # Use the explicit pick if the user chose from the dropdown;
         # otherwise fall back to whatever they typed verbatim.
-        if self._picked_symbol:
-            raw = self._picked_symbol
-        else:
-            raw = self.ticker_combo.currentText().strip()
+        raw = self._picked_symbol or self.ticker_combo.currentText().strip()
         if not raw:
             return
         # Auto-suffix bare A-share codes so 002335 → 002335.SZ, 600519 →
@@ -223,5 +227,3 @@ class InputPanel(QWidget):
         self.date_edit.setEnabled(not running)
         self.cancel_btn.setEnabled(running)
         self._update_button_state()
-from PySide6.QtCore import Qt as _Qt
-Qt = _Qt  # re-export so widget code can use ``Qt.AlignLeft`` etc.

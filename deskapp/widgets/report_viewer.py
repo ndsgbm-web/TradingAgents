@@ -5,13 +5,14 @@ hand-rolled CSS for clean Chinese rendering on macOS.
 """
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 from markdown_it import MarkdownIt
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import get_lexer_by_name, guess_lexer
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -26,7 +27,6 @@ from PySide6.QtWidgets import (
 )
 
 from ..core.i18n import T
-
 
 _CSS = """
 <style>
@@ -217,7 +217,7 @@ class ReportViewer(QWidget):
         we therefore also check the platform-specific install paths that
         the respective installers actually drop pandoc into.
         """
-        import shutil, sys
+        import shutil
         from pathlib import Path
         found = shutil.which("pandoc")
         if found:
@@ -233,9 +233,9 @@ class ReportViewer(QWidget):
             ]
         elif sys.platform == "win32":
             bases = [
-                Path(os.environ.get("ProgramFiles", r"C:\Program Files")),
-                Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")),
-                Path(os.environ.get("LocalAppData", str(home / "AppData/Local"))),
+                Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")),
+                Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")),
+                Path(os.environ.get("LOCALAPPDATA", str(home / "AppData/Local"))),
             ]
             for base in bases:
                 extra += [

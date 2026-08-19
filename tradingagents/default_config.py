@@ -25,6 +25,8 @@ _ENV_OVERRIDES = {
     "TRADINGAGENTS_GOOGLE_THINKING_LEVEL":   "google_thinking_level",
     "TRADINGAGENTS_OPENAI_REASONING_EFFORT": "openai_reasoning_effort",
     "TRADINGAGENTS_ANTHROPIC_EFFORT":        "anthropic_effort",
+    # Generic single-key hint; real provider keys are auto-detected.
+    "TRADINGAGENTS_API_KEY": "_api_key_override",
 }
 
 
@@ -68,11 +70,115 @@ def _apply_env_overrides(config: dict) -> dict:
     return config
 
 
+# --- Auto-detect provider from .env --------------------------------------
+#
+# Without this, ``llm_provider`` defaults to "openai" and the deep/quick
+# models default to ``gpt-5.5`` / ``gpt-5.4-mini``. If a user has filled
+# only ``MINIMAX_CN_API_KEY`` in their .env, the framework would still
+# try to call api.openai.com and fail. We scan the env for known provider
+# keys (in priority order) and pick the first match.
+# An explicit ``TRADINGAGENTS_LLM_PROVIDER`` in .env still wins; auto-detect
+# only fills in when no override is present.
+
+# Order matters: regional endpoints first (CN/global variants of the
+# same vendor), then the major Western providers.
+_PROVIDER_KEY_ENV = [
+    ("minimax-cn",  "MINIMAX_CN_API_KEY"),
+    ("minimax",     "MINIMAX_API_KEY"),
+    ("deepseek",    "DEEPSEEK_API_KEY"),
+    ("qwen-cn",     "DASHSCOPE_CN_API_KEY"),
+    ("qwen",        "DASHSCOPE_API_KEY"),
+    ("glm-cn",      "ZHIPU_CN_API_KEY"),
+    ("glm",         "ZHIPU_API_KEY"),
+    ("openai",      "OPENAI_API_KEY"),
+    ("google",      "GOOGLE_API_KEY"),
+    ("anthropic",   "ANTHROPIC_API_KEY"),
+    ("openrouter",  "OPENROUTER_API_KEY"),
+    ("xai",         "XAI_API_KEY"),
+    ("mistral",     "MISTRAL_API_KEY"),
+    ("kimi",        "MOONSHOT_API_KEY"),
+    ("groq",        "GROQ_API_KEY"),
+    ("nvidia",      "NVIDIA_API_KEY"),
+]
+
+# (deep_think, quick_think) defaults per provider. Flagship / fast pairs.
+_PROVIDER_MODEL_DEFAULTS = {
+    "minimax":     ("MiniMax-M3", "MiniMax-M3"),
+    "minimax-cn":  ("MiniMax-M3", "MiniMax-M3"),
+    "deepseek":    ("deepseek-chat", "deepseek-chat"),
+    "qwen":        ("qwen3.7-plus", "qwen3.7-plus"),
+    "qwen-cn":     ("qwen3.7-plus", "qwen3.7-plus"),
+    "glm":         ("glm-5.2", "glm-5.2"),
+    "glm-cn":      ("glm-5.2", "glm-5.2"),
+    "openai":      ("gpt-5.5", "gpt-5.4-mini"),
+    "google":      ("gemini-3.5-flash", "gemini-3.1-flash-lite"),
+    "anthropic":   ("claude-fable-5", "claude-haiku-4-5"),
+    "openrouter":  ("openai/gpt-5.5", "openai/gpt-5.4-mini"),
+    "xai":         ("grok-4.3", "grok-4.20-0309-non-reasoning"),
+    "mistral":     ("mistral-large-latest", "mistral-small-latest"),
+    "kimi":        ("moonshot-v1-128k", "moonshot-v1-8k"),
+    "groq":        ("llama-3.3-70b", "llama-3.1-8b-instant"),
+    "nvidia":      ("nvidia/llama-3.3-70b", "nvidia/llama-3.1-8b-instant"),
+}
+
+# Optional default backend URL per provider. Only applied when env doesn't
+# already set TRADINGAGENTS_LLM_BACKEND_URL.
+_PROVIDER_BACKEND_URL = {
+    "minimax-cn": "https://api.minimaxi.com/anthropic",
+    "anthropic":  "https://api.anthropic.com",
+}
+
+
+def _auto_detect_provider():
+    """Pick the first provider that has a non-empty key in os.environ.
+
+    Returns ``(provider, deep_model, quick_model)`` or ``None``.
+    """
+    explicit = os.environ.get("TRADINGAGENTS_LLM_PROVIDER", "").strip()
+    if explicit:
+        models = _PROVIDER_MODEL_DEFAULTS.get(
+            explicit, _PROVIDER_MODEL_DEFAULTS["openai"]
+        )
+        return (explicit, models[0], models[1])
+    for provider, key_env in _PROVIDER_KEY_ENV:
+        val = os.environ.get(key_env, "").strip()
+        if val:
+            models = _PROVIDER_MODEL_DEFAULTS.get(
+                provider, _PROVIDER_MODEL_DEFAULTS["openai"]
+            )
+            return (provider, models[0], models[1])
+    return None
+
+
+# Auto-detect provider from env BEFORE the env-override pass so the
+# hard-coded "openai" + "gpt-5.5" defaults below get upgraded when only
+# e.g. MINIMAX_CN_API_KEY is set.
+_auto = _auto_detect_provider()
+if _auto is not None:
+    _auto_provider, _auto_deep, _auto_quick = _auto
+    if not os.environ.get("TRADINGAGENTS_LLM_PROVIDER", "").strip():
+        os.environ["TRADINGAGENTS_LLM_PROVIDER"] = _auto_provider
+    if not os.environ.get("TRADINGAGENTS_DEEP_THINK_LLM", "").strip():
+        os.environ["TRADINGAGENTS_DEEP_THINK_LLM"] = _auto_deep
+    if not os.environ.get("TRADINGAGENTS_QUICK_THINK_LLM", "").strip():
+        os.environ["TRADINGAGENTS_QUICK_THINK_LLM"] = _auto_quick
+    if _auto_provider in _PROVIDER_BACKEND_URL and not os.environ.get(
+        "TRADINGAGENTS_LLM_BACKEND_URL", ""
+    ).strip():
+        os.environ["TRADINGAGENTS_LLM_BACKEND_URL"] = _PROVIDER_BACKEND_URL[_auto_provider]
+
 DEFAULT_CONFIG = _apply_env_overrides({
     "project_dir": os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
-    "results_dir": os.getenv("TRADINGAGENTS_RESULTS_DIR", os.path.join(_TRADINGAGENTS_HOME, "logs")),
-    "data_cache_dir": os.getenv("TRADINGAGENTS_CACHE_DIR", os.path.join(_TRADINGAGENTS_HOME, "cache")),
-    "memory_log_path": os.getenv("TRADINGAGENTS_MEMORY_LOG_PATH", os.path.join(_TRADINGAGENTS_HOME, "memory", "trading_memory.md")),
+    "results_dir": os.getenv(
+        "TRADINGAGENTS_RESULTS_DIR", os.path.join(_TRADINGAGENTS_HOME, "logs")
+    ),
+    "data_cache_dir": os.getenv(
+        "TRADINGAGENTS_CACHE_DIR", os.path.join(_TRADINGAGENTS_HOME, "cache")
+    ),
+    "memory_log_path": os.getenv(
+        "TRADINGAGENTS_MEMORY_LOG_PATH",
+        os.path.join(_TRADINGAGENTS_HOME, "memory", "trading_memory.md"),
+    ),
     # Optional cap on the number of resolved memory log entries. When set,
     # the oldest resolved entries are pruned once this limit is exceeded.
     # Pending entries are never pruned. None disables rotation entirely.
