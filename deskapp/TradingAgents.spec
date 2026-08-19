@@ -50,6 +50,11 @@ hidden = [
 hidden += collect_submodules("tradingagents.dataflows")
 hidden += collect_submodules("tradingagents.graph")
 hidden += collect_submodules("tradingagents.llm_clients")
+# Third-party packages PyInstaller's static analysis misses. akshare
+# dynamically imports its many sub-endpoints; py_mini_racer ships native
+# bits. Pulling them in explicitly avoids "module not found" at runtime.
+hidden += collect_submodules("akshare")
+hidden += collect_submodules("py_mini_racer")
 
 # Data files: bundle the app icon so QApplication picks it up.
 datas = []
