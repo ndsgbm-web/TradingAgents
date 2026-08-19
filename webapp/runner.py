@@ -70,10 +70,15 @@ REPORT_KEYS = (
 )
 
 
-def emit(event_type: str, **data) -> None:
-    """Write one JSON-line event to stdout for the parent process to consume."""
+def _default_emit(event_type: str, **data) -> None:
+    """Default emitter: write one JSON-line event to stdout."""
     payload = {"type": event_type, "ts": round(time.time(), 2), **data}
     print(json.dumps(payload, ensure_ascii=False), flush=True)
+
+
+# Module-level — deskapp replaces this with a Qt-signal emitter when running
+# in-process (so QProcess + relative-import footguns are sidestepped entirely).
+emit = _default_emit
 
 
 def run(ticker: str, date: str) -> Path:
